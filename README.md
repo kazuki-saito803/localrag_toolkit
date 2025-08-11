@@ -1,1 +1,2 @@
-# local-rag_toolkit
+## はじめに
+このリポジトリはAPIでRAGを構成するプロジェクトです。
