@@ -42,23 +42,24 @@ def index_exists(index_name: str) -> bool:
         raise
 
 
-def create_index():
-    if not index_exists(INDEX_NAME):
+# インデックス作成を index_name パラメータ対応に
+def create_index(index_name: str):
+    if not index_exists(index_name):
         try:
-            es.indices.create(index=INDEX_NAME, body=mapping)
-            print(f"✅ インデックス '{INDEX_NAME}' を作成しました。")
+            es.indices.create(index=index_name, body=mapping)
+            print(f"✅ インデックス '{index_name}' を作成しました。")
         except Exception as e:
             print(f"❌ インデックス作成時にエラーが発生しました: {e}")
             raise
     else:
-        print(f"インデックス '{INDEX_NAME}' は既に存在します。")
+        print(f"インデックス '{index_name}' は既に存在します。")
 
-
-def add_document(id: str, content: str, embedding: list):
+# ドキュメント追加を index_name パラメータ対応に
+def add_document(index_name: str, id: str, content: str, embedding: list):
     doc = {"content": content, "embedding": embedding}
     try:
-        es.index(index=INDEX_NAME, id=id, document=doc)
-        print(f"ドキュメント {id} を追加しました。")
+        es.index(index=index_name, id=id, document=doc)
+        print(f"ドキュメント {id} をインデックス '{index_name}' に追加しました。")
     except Exception as e:
         print(f"ドキュメント追加時にエラーが発生しました: {e}")
         raise
