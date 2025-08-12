@@ -2,14 +2,25 @@ import requests
 from fastapi import HTTPException
 
 def ask_llm(prompt: str) -> str:
-    url = "http://localhost:11434/api/chat/completions"  # Ollamaの例
-    headers = {"Content-Type": "application/json"}
-    data = {
-        "model": "gpt-oss:20b",
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    resp = requests.post(url, json=data, headers=headers)
-    if resp.status_code == 200:
-        return resp.json()['choices'][0]['message']['content']
-    else:
-        raise HTTPException(status_code=500, detail="LLM問い合わせ失敗")
+    try:
+        url = "http://localhost:11434/api/generate"
+        payload = {
+            "model": "gpt-oss:20b",
+            "prompt": prompt,
+            "stream": False  # 一括応答
+        }
+
+        resp = requests.post(url, json=payload)
+
+        # HTTPエラーチェック
+        if resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Ollama API error: {resp.text}")
+
+        # JSONパース
+        data = resp.json()
+
+        # 応答テキスト取得
+        return data.get("response", "")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM問い合わせ失敗: {str(e)}")
