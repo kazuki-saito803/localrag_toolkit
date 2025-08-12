@@ -1,27 +1,26 @@
-import subprocess
-import json
+import requests
 from fastapi import HTTPException
 
 def ask_llm(prompt: str) -> str:
     try:
-        # 'ollama chat' コマンドをサブプロセスで呼び出し
-        process = subprocess.Popen(
-            ["ollama", "chat", "gpt-oss:20b", "--json"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = process.communicate(input=prompt.encode("utf-8"))
+        url = "http://localhost:11434/api/generate"
+        payload = {
+            "model": "gpt-oss:20b",
+            "prompt": prompt,
+            "stream": False  # 一括応答
+        }
 
-        # エラーチェック
-        if process.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Ollama CLI error: {stderr.decode()}")
+        resp = requests.post(url, json=payload)
 
-        # JSONレスポンスのパース
-        resp = json.loads(stdout)
+        # HTTPエラーチェック
+        if resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Ollama API error: {resp.text}")
 
-        # 応答メッセージの抽出
-        return resp.get("message", {}).get("content", "")
+        # JSONパース
+        data = resp.json()
+
+        # 応答テキスト取得
+        return data.get("response", "")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM問い合わせ失敗: {str(e)}")

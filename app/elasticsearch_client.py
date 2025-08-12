@@ -77,6 +77,7 @@ def search_similar(embedding: list, top_k: int = 3):
     }
     try:
         resp = es.search(index=INDEX_NAME, query=query, size=top_k)
+        print(f"Elasticsearch response: {resp}")
         hits = resp["hits"]["hits"]
         return [hit["_source"]["content"] for hit in hits]
     except Exception as e:

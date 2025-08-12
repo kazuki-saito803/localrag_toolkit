@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from app.schemas import IndexRequest, QueryRequest, QueryResponse
 from app.embedding import embed_texts
-from app.elasticsearch_client import create_index, add_document, index_exists, search_similar
+from app.elasticsearch_client import create_index, add_document, index_exists, search_similar, es
 from app.llm_client import ask_llm
 
 
@@ -44,4 +44,26 @@ def query_answer(req: QueryRequest):
     context = "\n".join(docs)
     prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {req.question}"
     answer = ask_llm(prompt)
-    return QueryResponse(answer=answer)
+    return QueryResponse(answer=answer, docs=docs)
+
+
+@app.get("/get_index")
+def get_index(index_name: str):
+    """
+    指定したインデックス名のドキュメントを最大 size 件取得して返すエンドポイント
+    """
+    try:
+        count = es.count(index=index_name)["count"]
+        if count > 10000:
+            count = 10000
+        print(f"{index_name} のドキュメント件数は {count} 件です。")
+        resp = es.search(
+            index=index_name,
+            query={"match_all": {}},
+            size=count
+        )
+        hits = resp["hits"]["hits"]
+        contents = [hit["_source"]["content"] for hit in hits]
+        return {"index_name": index_name, "documents": contents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"インデックス取得失敗: {e}")
