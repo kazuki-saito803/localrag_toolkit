@@ -76,21 +76,8 @@ def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
     }
     try:
         resp = es.search(index=index_name, query=query, size=top_k)
-        print(f"Elasticsearch response: {resp}")
         hits = resp["hits"]["hits"]
         return [hit["_source"]["content"] for hit in hits]
     except Exception as e:
         print(f"類似検索時にエラーが発生しました: {e}")
         raise
-
-if __name__ == '__main__':
-    from embedding import embed_texts
-    
-    content = ["総理大臣の名前は齋藤一樹です。", "今日の天気は晴れです。", "お寿司は美味しいです。", "コーヒーを飲むとカフェインの効果で眠気が覚めます。", "夏は冷たいものが食べたくなります。"]
-    # create_index("test")  # インデックスを作成
-    documents_vector = embed_texts(content)
-    for i, (doc, vector) in enumerate(zip(content, documents_vector)):
-        add_document("test", str(i), doc, vector)
-    query_vector = embed_texts(["今日の天気は？"])[0]
-    similar_docs = search_similar(query_vector)
-    print(similar_docs)
