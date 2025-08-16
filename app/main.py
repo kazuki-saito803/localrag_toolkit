@@ -1,15 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
-from app.schemas import IndexRequest, QueryRequest, QueryResponse
-from app.embedding import embed_texts
-from app.elasticsearch_client import create_index, add_document, index_exists, search_similar, es
-from app.llm_client import ask_llm
+from schemas import IndexRequest, QueryRequest, QueryResponse
+from embedding import embed_texts
+from elasticsearch_client import create_index, add_document, index_exists, search_similar, es
+from llm_client import ask_llm
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 起動時に特定の固定インデックスを作る場合はここで処理可能
-    # ただし動的インデックス作成ならここは空でも良い
     yield
 
 
@@ -40,7 +38,7 @@ def index_docs(req: IndexRequest):
 @app.post("/query", response_model=QueryResponse)
 def query_answer(req: QueryRequest):
     q_emb = embed_texts([req.question])[0]
-    docs = search_similar(q_emb)
+    docs = search_similar(q_emb, req.top_k, req.index_name)
     context = "\n".join(docs)
     prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {req.question}"
     answer = ask_llm(prompt)
@@ -49,11 +47,9 @@ def query_answer(req: QueryRequest):
 
 @app.get("/get_index")
 def get_index(index_name: str):
-    """
-    指定したインデックス名のドキュメントを最大 size 件取得して返すエンドポイント
-    """
     try:
         count = es.count(index=index_name)["count"]
+        # ドキュメント取得数の上限まで達した場合は10000を返す。
         if count > 10000:
             count = 10000
         print(f"{index_name} のドキュメント件数は {count} 件です。")
@@ -67,3 +63,9 @@ def get_index(index_name: str):
         return {"index_name": index_name, "documents": contents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"インデックス取得失敗: {e}")
+    
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

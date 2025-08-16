@@ -7,6 +7,8 @@ class IndexRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str
+    top_k: int
+    index_name: str
 
 class QueryResponse(BaseModel):
     answer: str
