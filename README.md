@@ -1,7 +1,7 @@
 ## はじめに
 このリポジトリはAPIでRAGを構成するプロジェクトです。
 ## 準備
-1. ボリュームを作成
+1. ボリュームを作成(永続化させたい場合)
     ```bash
     docker volume create elasticsearch_data
     ```
@@ -15,13 +15,17 @@
     -v elasticsearch_data:/usr/share/elasticsearch/data \
     docker.elastic.co/elasticsearch/elasticsearch:8.2.2
     ```
-1. Fast APIサーバーを立ち上げる。
+1. main.pyを実行してFast APIサーバーを立ち上げる。
     ```bash
-    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    python main.py
     ```
 1. Ollamaサーバーを立ち上げる
     ```bash
     ollama serve --port 11434
+    ```
+1. Ollamaでモデルをpull(今回はllama3を使用)
+    ```bash
+    ollama pull llama
     ```
 1. APIリクエストを送る
     Index作成
@@ -42,7 +46,12 @@
     ```
     LLM呼び出し
     ```bash
-    curl -X POST http://localhost:8000/query \
-    -H "Content-Type: application/json" \
-    -d '{"question": "日本の総理大臣は誰ですか？"}'
+    curl -X 'POST' \                                                       
+    'http://localhost:8000/query' \
+    -H 'Content-Type: application/json' \
+    -d '{
+    "question": "総理大臣の名前は誰ですか？",
+    "top_k": 3,
+    "index_name": "my_index"
+    }'
     ```

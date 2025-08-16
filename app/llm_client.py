@@ -3,11 +3,11 @@ from fastapi import HTTPException
 
 def ask_llm(prompt: str) -> str:
     try:
-        url = "http://localhost:11434/api/generate"
+        url = "http://localhost:11434/api/generate"  # OllamaのAPIエンドポイント
         payload = {
-            "model": "gpt-oss:20b",
+            "model": "llama3",
             "prompt": prompt,
-            "stream": False  # 一括応答
+            "stream": False 
         }
 
         resp = requests.post(url, json=payload)

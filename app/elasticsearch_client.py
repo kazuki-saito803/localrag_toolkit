@@ -13,7 +13,6 @@ es = Elasticsearch(
     }
 )
 
-INDEX_NAME = "rag_docs"
 
 # インデックスのマッピング設定
 mapping = {
@@ -64,8 +63,8 @@ def add_document(index_name: str, id: str, content: str, embedding: list):
         print(f"ドキュメント追加時にエラーが発生しました: {e}")
         raise
 
-
-def search_similar(embedding: list, top_k: int = 3):
+# 入力クエリとベクトルDBに格納されたIndexの類似度を計算
+def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
     query = {
         "script_score": {
             "query": {"match_all": {}},
@@ -76,8 +75,7 @@ def search_similar(embedding: list, top_k: int = 3):
         }
     }
     try:
-        resp = es.search(index=INDEX_NAME, query=query, size=top_k)
-        print(f"Elasticsearch response: {resp}")
+        resp = es.search(index=index_name, query=query, size=top_k)
         hits = resp["hits"]["hits"]
         return [hit["_source"]["content"] for hit in hits]
     except Exception as e:
