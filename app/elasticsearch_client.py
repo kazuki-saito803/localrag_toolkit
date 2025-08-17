@@ -77,7 +77,30 @@ def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
     try:
         resp = es.search(index=index_name, query=query, size=top_k)
         hits = resp["hits"]["hits"]
-        return [hit["_source"]["content"] for hit in hits]
+
+        # content と score の両方を返す
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # 類似度スコア
+            }
+            for hit in hits
+        ]
+        return results
+
     except Exception as e:
         print(f"類似検索時にエラーが発生しました: {e}")
         raise
+
+if __name__ == '__main__':
+    from embedding import embed_texts
+    
+    test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
+    embed_data = embed_texts(test_data)
+    # print(embed_data)
+    create_index("test")
+    input_data = ["今日の昼ごはんは？"]
+    embed_input_data = embed_texts(input_data)
+    search_result = search_similar(embed_input_data[0], top_k = 6)
+    print(search_result)
+    

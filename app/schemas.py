@@ -10,6 +10,10 @@ class QueryRequest(BaseModel):
     top_k: int
     index_name: str
 
+class DocItem(BaseModel):
+    content: str
+    score: float
+
 class QueryResponse(BaseModel):
     answer: str
-    docs: List[str]
+    docs: List[DocItem]

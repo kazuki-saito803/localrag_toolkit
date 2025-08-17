@@ -48,7 +48,7 @@ def index_docs(req: IndexRequest):
 def query_answer(req: QueryRequest):
     q_emb = embed_texts([req.question])[0]
     docs = search_similar(q_emb, req.top_k, req.index_name)
-    context = "\n".join(docs)
+    context = "\n".join([d["content"] for d in docs])
     prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {req.question}"
     answer = ask_llm(prompt)
     return QueryResponse(answer=answer, docs=docs)
