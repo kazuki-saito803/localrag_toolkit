@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
+from chunk import chunking
 
 ES_COMPAT_VERSION = "8"  # Elasticsearch 8系なので8を指定
 ES_URL = "http://localhost:9200"
@@ -29,6 +30,34 @@ mapping = {
     }
 }
 
+def get_documents(index_name: str, size: int = 10):
+    """
+    指定インデックスの最初の `size` 件のドキュメントを取得して表示
+    """
+    try:
+        resp = es.search(
+            index=index_name,
+            query={"match_all": {}},  # 全件取得
+            size=size
+        )
+        hits = resp["hits"]["hits"]
+        documents = [hit["_source"] for hit in hits]  # _source にドキュメント内容が入る
+        # for i, doc in enumerate(documents, 1):
+            # print(f"{i}: {doc}")
+        return documents
+    except Exception as e:
+        print(f"ドキュメント取得時にエラー: {e}")
+        return []
+
+def get_document_count(index_name):
+    try:
+        count_result = es.count(index=index_name)
+        # print(count_result)
+        # print('---------------')
+        doc_count = count_result["count"]
+        # print(f"インデックス '{index_name}' のドキュメント数: {doc_count}")
+    except Exception as e:
+        print(f"ドキュメント数取得時にエラー: {e}")
 
 def index_exists(index_name: str) -> bool:
     try:
@@ -53,15 +82,17 @@ def create_index(index_name: str):
     else:
         print(f"インデックス '{index_name}' は既に存在します。")
 
-# ドキュメント追加を index_name パラメータ対応に
 def add_document(index_name: str, id: str, content: str, embedding: list):
-    doc = {"content": content, "embedding": embedding}
-    try:
-        es.index(index=index_name, id=id, document=doc)
-        print(f"ドキュメント {id} をインデックス '{index_name}' に追加しました。")
-    except Exception as e:
-        print(f"ドキュメント追加時にエラーが発生しました: {e}")
-        raise
+    if index_exists(index_name):
+        doc = {"content": content, "embedding": embedding}
+        try:
+            es.index(index=index_name, id=id, document=doc)
+            print(f"ドキュメント {id} をインデックス '{index_name}' に追加しました。")
+        except Exception as e:
+            print(f"ドキュメント追加時にエラーが発生しました: {e}")
+            raise
+    else:
+        print(f"インデックス '{index_name}' は存在しません。")
 
 # 入力クエリとベクトルDBに格納されたIndexの類似度を計算
 def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
@@ -95,12 +126,12 @@ def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
 if __name__ == '__main__':
     from embedding import embed_texts
     
-    test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
-    embed_data = embed_texts(test_data)
-    # print(embed_data)
-    create_index("test")
+    # test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
+    # embed_data = embed_texts(test_data)
+    # create_index("test01")
     input_data = ["今日の昼ごはんは？"]
     embed_input_data = embed_texts(input_data)
-    search_result = search_similar(embed_input_data[0], top_k = 6)
-    print(search_result)
-    
+    search_result = search_similar(embed_input_data[0], top_k = 6, index_name = "test02")
+    # print(search_result)
+    # print(get_document_count("test"))
+    print(len(get_documents('test02')))

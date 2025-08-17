@@ -4,6 +4,7 @@ from schemas import IndexRequest, QueryRequest, QueryResponse
 from embedding import embed_texts
 from elasticsearch_client import create_index, add_document, index_exists, search_similar, es
 from llm_client import ask_llm
+from chunk import chunking
 
 
 @asynccontextmanager
@@ -23,26 +24,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# @app.post("/index")
+# def index_docs(req: IndexRequest):
+#     # インデックス名必須チェック（念のため）
+#     if not req.index_name:
+#         raise HTTPException(status_code=400, detail="index_name は必須です")
+
+#     # インデックス存在チェック＆作成
+#     try:
+#         if not index_exists(req.index_name):
+#             create_index(req.index_name)
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"インデックス作成に失敗しました: {e}")
+
+#     # 埋め込み計算＆ドキュメント登録
+#     embeddings = embed_texts(req.documents)
+#     for i, (doc, emb) in enumerate(zip(req.documents, embeddings)):
+#         add_document(index_name=req.index_name, id=f"doc_{i}", content=doc, embedding=emb)
+
+#     return {"message": f"インデックス '{req.index_name}' に {len(req.documents)} 件のドキュメントを登録しました"}
+
+from fastapi import FastAPI, UploadFile, File, Form
+from typing import List
+
 @app.post("/index")
-def index_docs(req: IndexRequest):
-    # インデックス名必須チェック（念のため）
-    if not req.index_name:
-        raise HTTPException(status_code=400, detail="index_name は必須です")
+async def index_docs(
+    index_name: str = Form(...),  # フォームから取得
+    documents: List[UploadFile] = File(...)  # ファイルを複数受け取る
+):
+    all_chunks = []
+    for uploaded_file in documents:
+        content_bytes = await uploaded_file.read()
+        text = content_bytes.decode("utf-8")
+        chunks = chunking(text, chunk_size=50, overlap=10)
+        all_chunks.extend(chunks)
 
-    # インデックス存在チェック＆作成
-    try:
-        if not index_exists(req.index_name):
-            create_index(req.index_name)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"インデックス作成に失敗しました: {e}")
+    embeddings = embed_texts(all_chunks)
+    for i, (chunk, emb) in enumerate(zip(all_chunks, embeddings)):
+        add_document(index_name=index_name, id=f"chunk_{i}", content=chunk, embedding=emb)
 
-    # 埋め込み計算＆ドキュメント登録
-    embeddings = embed_texts(req.documents)
-    for i, (doc, emb) in enumerate(zip(req.documents, embeddings)):
-        add_document(index_name=req.index_name, id=f"doc_{i}", content=doc, embedding=emb)
-
-    return {"message": f"インデックス '{req.index_name}' に {len(req.documents)} 件のドキュメントを登録しました"}
-
+    return {"message": f"インデックス '{index_name}' に {len(all_chunks)} 件のチャンクを登録しました"}
 
 @app.post("/query", response_model=QueryResponse)
 def query_answer(req: QueryRequest):
