@@ -1,20 +1,23 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, FastAPI, UploadFile, File, Form
 from schemas import IndexRequest, QueryRequest, QueryResponse
 from embedding import embed_texts
 from elasticsearch_client import create_index, add_document, index_exists, search_similar, es
 from llm_client import ask_llm
 from chunk import chunking
+from typing import List
+from fastapi.middleware.cors import CORSMiddleware
+
+from reranking import reranking
+from query_rewriter import rewrite_query
+from response_evaluation import evaluate_answer
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
 
-
 app = FastAPI(lifespan=lifespan)
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,29 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# @app.post("/index")
-# def index_docs(req: IndexRequest):
-#     # インデックス名必須チェック（念のため）
-#     if not req.index_name:
-#         raise HTTPException(status_code=400, detail="index_name は必須です")
-
-#     # インデックス存在チェック＆作成
-#     try:
-#         if not index_exists(req.index_name):
-#             create_index(req.index_name)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"インデックス作成に失敗しました: {e}")
-
-#     # 埋め込み計算＆ドキュメント登録
-#     embeddings = embed_texts(req.documents)
-#     for i, (doc, emb) in enumerate(zip(req.documents, embeddings)):
-#         add_document(index_name=req.index_name, id=f"doc_{i}", content=doc, embedding=emb)
-
-#     return {"message": f"インデックス '{req.index_name}' に {len(req.documents)} 件のドキュメントを登録しました"}
-
-from fastapi import FastAPI, UploadFile, File, Form
-from typing import List
 
 @app.post("/index")
 async def index_docs(
@@ -67,12 +47,14 @@ async def index_docs(
 
 @app.post("/query", response_model=QueryResponse)
 def query_answer(req: QueryRequest):
-    q_emb = embed_texts([req.question])[0]
-    docs = search_similar(q_emb, req.top_k, req.index_name)
-    context = "\n".join([d["content"] for d in docs])
-    prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {req.question}"
-    answer = ask_llm(prompt)
-    return QueryResponse(answer=answer, docs=docs)
+    q_emb = embed_texts([req.question])[0]  # 入力テキストをベクトル化
+    docs = search_similar(q_emb, req.top_k, req.index_name)  # 類似度を計算して取得
+    rerank_result = reranking(docs) # 計算結果を再評価
+    context = "\n".join([d["content"] for d in rerank_result])  # マージ
+    rewrited_query = rewrite_query(req.question)  # クエリを書き換え
+    prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {rewrited_query}"  # マージ
+    answer = ask_llm(prompt)  # 回答生成
+    return QueryResponse(answer=answer, docs=docs) # return
 
 
 @app.get("/get_index")

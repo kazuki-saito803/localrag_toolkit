@@ -22,9 +22,7 @@ mapping = {
             "content": {"type": "text"},
             "embedding": {
                 "type": "dense_vector",
-                "dims": 384,
-                "index": True,
-                "similarity": "cosine"
+                "dims": 384
             }
         }
     }
@@ -96,6 +94,9 @@ def add_document(index_name: str, id: str, content: str, embedding: list):
 
 # 入力クエリとベクトルDBに格納されたIndexの類似度を計算
 def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
+    # numpy array の場合は list に変換
+    embedding = list(embedding)
+
     query = {
         "script_score": {
             "query": {"match_all": {}},
@@ -105,16 +106,13 @@ def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
             }
         }
     }
+
     try:
         resp = es.search(index=index_name, query=query, size=top_k)
         hits = resp["hits"]["hits"]
 
-        # content と score の両方を返す
         results = [
-            {
-                "content": hit["_source"]["content"],
-                "score": hit["_score"]  # 類似度スコア
-            }
+            {"content": hit["_source"]["content"], "score": hit["_score"]}
             for hit in hits
         ]
         return results
