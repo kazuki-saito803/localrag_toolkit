@@ -188,21 +188,21 @@ def search_keyword(keyword: str, top_k: int = 5, index_name: str = "test"):
         raise
 
 if __name__ == '__main__':
-    # from embedding import embed_texts
+    from embedding import embed_texts
     
     # # test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
-    # # embed_data = embed_texts(test_data)
+    # embed_data = embed_texts(test_data)
     # # create_index("test01")
-    # input_data = ["今日の昼ごはんは？"]
-    # embed_input_data = embed_texts(input_data)
-    # search_result = search_similar(embed_input_data[0], top_k = 6, index_name = "test02")
-    # # print(search_result)
+    input_data = ["今日の昼ごはんは？"]
+    embed_input_data = embed_texts(input_data)
+    search_result = search_similar(embed_input_data[0], top_k = 6, index_name = "test02")
+    print(search_result)
     # # print(get_document_count("test"))
     # print(len(get_documents('test02')))
     
-    # bm25_results = search_bm25("夏に食べたくなるものは？", top_k=3, index_name="test")
-    # for r in bm25_results:
-    #     print(r["score"], r["content"])
-    keyword_results = search_keyword("夏は冷たいものが食べたくなります。", top_k=3, index_name="test")
-    for r in keyword_results:
+    bm25_results = search_bm25("夏に食べたくなるものは？", top_k=3, index_name="test")
+    for r in bm25_results:
         print(r["score"], r["content"])
+    # keyword_results = search_keyword("夏は冷たいものが食べたくなります。", top_k=3, index_name="test")
+    # for r in keyword_results:
+    #     print(r["score"], r["content"])

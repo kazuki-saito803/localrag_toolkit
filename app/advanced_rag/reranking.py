@@ -5,7 +5,7 @@ from typing import List
 # OllamaLLMの初期化
 llm = OllamaLLM(model="llama3", stop=["<|eot_id|>"])
 
-def reranking(query: str, candidates: List[dict], llm) -> List[dict]:
+def reranking(query: str, candidates: List[dict], llm=llm) -> List[dict]:
     """
     LLMを用いて候補のリストを再評価し、スコア順に並び替える
     """
