@@ -123,15 +123,86 @@ def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
         print(f"類似検索時にエラーが発生しました: {e}")
         raise
 
+def search_bm25(query_text: str, top_k: int = 5, index_name: str = "test"):
+    """
+    BM25による全文検索
+    :param query_text: 検索クエリ文字列
+    :param top_k: 上位k件を返す
+    :param index_name: 検索対象のインデックス
+    :return: [{'content': ..., 'score': ...}, ...]
+    """
+    bm25_query = {
+        "match": {
+            "content": {
+                "query": query_text
+            }
+        }
+    }
+    
+    try:
+        resp = es.search(index=index_name, query=bm25_query, size=top_k)
+        hits = resp["hits"]["hits"]
+
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # BM25スコア
+            }
+            for hit in hits
+        ]
+        return results
+    except Exception as e:
+        print(f"BM25検索時にエラーが発生しました: {e}")
+        raise
+    
+def search_keyword(keyword: str, top_k: int = 5, index_name: str = "test"):
+    """
+    キーワード検索（完全一致に近い検索）
+    :param keyword: 検索キーワード
+    :param top_k: 上位k件を返す
+    :param index_name: 検索対象のインデックス
+    :return: [{'content': ..., 'score': ...}, ...]
+    """
+    keyword_query = {
+        "term": {
+            "content.keyword": {  # content フィールドの keyword サブフィールドを使用
+                "value": keyword
+            }
+        }
+    }
+
+    try:
+        resp = es.search(index=index_name, query=keyword_query, size=top_k)
+        hits = resp["hits"]["hits"]
+
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # キーワード検索スコア
+            }
+            for hit in hits
+        ]
+        return results
+    except Exception as e:
+        print(f"キーワード検索時にエラーが発生しました: {e}")
+        raise
+
 if __name__ == '__main__':
     from embedding import embed_texts
     
-    # test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
+    # # test_data = ["総理大臣の名前は齋藤一樹です。", "今日の昼ごはんはカツ丼でした。","好きな食べ物はお寿司です。", "趣味はサッカー観戦です。", "東京都に住んでいます。", "生まれは岩手県一関市です。" ]
     # embed_data = embed_texts(test_data)
-    # create_index("test01")
+    # # create_index("test01")
     input_data = ["今日の昼ごはんは？"]
     embed_input_data = embed_texts(input_data)
     search_result = search_similar(embed_input_data[0], top_k = 6, index_name = "test02")
-    # print(search_result)
-    # print(get_document_count("test"))
-    print(len(get_documents('test02')))
+    print(search_result)
+    # # print(get_document_count("test"))
+    # print(len(get_documents('test02')))
+    
+    bm25_results = search_bm25("夏に食べたくなるものは？", top_k=3, index_name="test")
+    for r in bm25_results:
+        print(r["score"], r["content"])
+    # keyword_results = search_keyword("夏は冷たいものが食べたくなります。", top_k=3, index_name="test")
+    # for r in keyword_results:
+    #     print(r["score"], r["content"])

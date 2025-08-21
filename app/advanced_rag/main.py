@@ -49,7 +49,7 @@ async def index_docs(
 def query_answer(req: QueryRequest):
     q_emb = embed_texts([req.question])[0]  # 入力テキストをベクトル化
     docs = search_similar(q_emb, req.top_k, req.index_name)  # 類似度を計算して取得
-    rerank_result = reranking(docs) # 計算結果を再評価
+    rerank_result = reranking(req.question, docs) # 計算結果を再評価
     context = "\n".join([d["content"] for d in rerank_result])  # マージ
     rewrited_query = rewrite_query(req.question)  # クエリを書き換え
     prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {rewrited_query}"  # マージ
@@ -75,6 +75,8 @@ def get_index(index_name: str):
         return {"index_name": index_name, "documents": contents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"インデックス取得失敗: {e}")
+
+
     
 
 
