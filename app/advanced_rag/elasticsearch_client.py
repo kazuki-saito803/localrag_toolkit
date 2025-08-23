@@ -1,11 +1,11 @@
-import numpy as np
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from sentence_transformers import SentenceTransformer
+from chunk import chunking
 
-# Elasticsearchの設定
+ES_COMPAT_VERSION = "8"  # Elasticsearch 8系なので8を指定
 ES_URL = "http://localhost:9200"
-ES_COMPAT_VERSION = "8"
+
+# Elasticsearchクライアント初期化（互換モード対応）
 es = Elasticsearch(
     ES_URL,
     headers={
@@ -14,11 +14,6 @@ es = Elasticsearch(
     }
 )
 
-# 埋め込みモデルの設定
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-# インデックス名
-INDEX_NAME = "text_data04"
 
 # インデックスのマッピング設定
 mapping = {
@@ -35,103 +30,159 @@ mapping = {
     }
 }
 
-# インデックスの存在確認
+def get_documents(index_name: str, size: int = 10):
+    """
+    指定インデックスの最初の `size` 件のドキュメントを取得して表示
+    """
+    try:
+        resp = es.search(
+            index=index_name,
+            query={"match_all": {}},  # 全件取得
+            size=size
+        )
+        hits = resp["hits"]["hits"]
+        documents = [hit["_source"] for hit in hits]  # _source にドキュメント内容が入る
+        # for i, doc in enumerate(documents, 1):
+            # print(f"{i}: {doc}")
+        return documents
+    except Exception as e:
+        print(f"ドキュメント取得時にエラー: {e}")
+        return []
+
+def get_document_count(index_name):
+    try:
+        count_result = es.count(index=index_name)
+        # print(count_result)
+        # print('---------------')
+        doc_count = count_result["count"]
+        # print(f"インデックス '{index_name}' のドキュメント数: {doc_count}")
+    except Exception as e:
+        print(f"ドキュメント数取得時にエラー: {e}")
+
 def index_exists(index_name: str) -> bool:
     try:
         es.indices.get(index=index_name)
         return True
     except NotFoundError:
         return False
+    except Exception as e:
+        print(f"インデックス存在チェック中に予期せぬエラーが発生しました: {e}")
+        raise
 
-# インデックスの作成
+
+# インデックス作成を index_name パラメータ対応に
 def create_index(index_name: str):
     if not index_exists(index_name):
-        es.indices.create(index=index_name, body=mapping)
-        print(f"✅ インデックス '{index_name}' を作成しました。")
+        try:
+            es.indices.create(index=index_name, body=mapping)
+            print(f"✅ インデックス '{index_name}' を作成しました。")
+        except Exception as e:
+            print(f"❌ インデックス作成時にエラーが発生しました: {e}")
+            raise
     else:
         print(f"インデックス '{index_name}' は既に存在します。")
 
-# ドキュメントの追加
-def add_document(index_name: str, doc_id: str, content: str, embedding: list):
-    doc = {"content": content, "embedding": embedding}
-    es.index(index=index_name, id=doc_id, document=doc)
-    print(f"ドキュメント {doc_id} をインデックス '{index_name}' に追加しました。")
+def add_document(index_name: str, id: str, content: str, embedding: list):
+    if index_exists(index_name):
+        doc = {"content": content, "embedding": embedding}
+        try:
+            es.index(index=index_name, id=id, document=doc)
+            print(f"ドキュメント {id} をインデックス '{index_name}' に追加しました。")
+        except Exception as e:
+            print(f"ドキュメント追加時にエラーが発生しました: {e}")
+            raise
+    else:
+        print(f"インデックス '{index_name}' は存在しません。")
 
-# ベクトルの埋め込み生成
-def embed_texts(texts: list) -> list:
-    return model.encode(texts).tolist()
-
-# ベクトル検索（cosine similarity）
-def search_vector(query_vector: list, top_k: int = 3):
+# 入力クエリとベクトルDBに格納されたIndexの類似度を計算
+def search_similar(embedding: list, top_k: int = 3, index_name: str = "test"):
     query = {
         "script_score": {
             "query": {"match_all": {}},
             "script": {
                 "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                "params": {"query_vector": query_vector}
+                "params": {"query_vector": embedding}
             }
         }
     }
-    response = es.search(index=INDEX_NAME, query=query, size=top_k)
-    return [{"content": hit["_source"]["content"], "score": hit["_score"]} for hit in response["hits"]["hits"]]
+    try:
+        resp = es.search(index=index_name, query=query, size=top_k)
+        hits = resp["hits"]["hits"]
 
-# BM25検索
-def search_bm25(query_text: str, top_k: int = 3):
-    query = {"match": {"content": query_text}}
-    response = es.search(index=INDEX_NAME, query=query, size=top_k)
-    return [{"content": hit["_source"]["content"], "score": hit["_score"]} for hit in response["hits"]["hits"]]
+        # content と score の両方を返す
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # 類似度スコア
+            }
+            for hit in hits
+        ]
+        return results
 
-# キーワード検索
-def search_keyword(keyword: str, top_k: int = 3):
-    query = {
+    except Exception as e:
+        print(f"類似検索時にエラーが発生しました: {e}")
+        raise
+
+def search_bm25(query_text: str, top_k: int = 5, index_name: str = "test"):
+    """
+    BM25による全文検索
+    :param query_text: 検索クエリ文字列
+    :param top_k: 上位k件を返す
+    :param index_name: 検索対象のインデックス
+    :return: [{'content': ..., 'score': ...}, ...]
+    """
+    bm25_query = {
+        "match": {
+            "content": {
+                "query": query_text
+            }
+        }
+    }
+    
+    try:
+        resp = es.search(index=index_name, query=bm25_query, size=top_k)
+        hits = resp["hits"]["hits"]
+
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # BM25スコア
+            }
+            for hit in hits
+        ]
+        return results
+    except Exception as e:
+        print(f"BM25検索時にエラーが発生しました: {e}")
+        raise
+    
+def search_keyword(keyword: str, top_k: int = 5, index_name: str = "test"):
+    """
+    キーワード検索（完全一致に近い検索）
+    :param keyword: 検索キーワード
+    :param top_k: 上位k件を返す
+    :param index_name: 検索対象のインデックス
+    :return: [{'content': ..., 'score': ...}, ...]
+    """
+    keyword_query = {
         "term": {
-            "content.keyword": {
+            "content.keyword": {  # content フィールドの keyword サブフィールドを使用
                 "value": keyword
             }
         }
     }
-    response = es.search(index=INDEX_NAME, query=query, size=top_k)
-    return [{"content": hit["_source"]["content"], "score": hit["_score"]} for hit in response["hits"]["hits"]]
 
-# ドキュメントの取得
-def get_documents(index_name: str, size: int = 10):
-    response = es.search(index=index_name, query={"match_all": {}}, size=size)
-    return [{"content": hit["_source"]["content"]} for hit in response["hits"]["hits"]]
+    try:
+        resp = es.search(index=index_name, query=keyword_query, size=top_k)
+        hits = resp["hits"]["hits"]
 
-# メイン処理
-if __name__ == "__main__":
-    create_index(INDEX_NAME)
-
-    # サンプルデータ
-    texts = [
-        "Elasticsearchは全文検索エンジンです。",
-        "ベクトル検索は意味的な類似性を評価します。",
-        "BM25は従来の検索手法です。",
-        "キーワード検索は完全一致を重視します。",
-        "Elasticsearchはスケーラブルな検索を提供します。",
-        "ベクトル検索はAIによる意味理解を活用します。"
-    ]
-
-    # 埋め込みの生成とドキュメントの追加
-    embeddings = embed_texts(texts)
-    for i, (text, embedding) in enumerate(zip(texts, embeddings)):
-        add_document(INDEX_NAME, str(i), text, embedding)
-
-    # 検索例
-    query = "ベクトル検索のメリットは何ですか？"
-    query_embedding = embed_texts([query])[0]
-
-    print("\n--- ベクトル検索 ---")
-    vector_results = search_vector(query_embedding)
-    for result in vector_results:
-        print(f"スコア: {result['score']}, 内容: {result['content']}")
-
-    print("\n--- BM25検索 ---")
-    bm25_results = search_bm25(query)
-    for result in bm25_results:
-        print(f"スコア: {result['score']}, 内容: {result['content']}")
-
-    print("\n--- キーワード検索 ---")
-    keyword_results = search_keyword("ベクトル検索")
-    for result in keyword_results:
-        print(f"スコア: {result['score']}, 内容: {result['content']}")
+        results = [
+            {
+                "content": hit["_source"]["content"],
+                "score": hit["_score"]  # キーワード検索スコア
+            }
+            for hit in hits
+        ]
+        return results
+    except Exception as e:
+        print(f"キーワード検索時にエラーが発生しました: {e}")
+        raise
