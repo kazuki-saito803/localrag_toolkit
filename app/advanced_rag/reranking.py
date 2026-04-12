@@ -27,6 +27,7 @@ def reranking(query: str, candidates: List[dict], llm=llm) -> List[dict]:
 {candidate_texts}
 
 出力はJSON形式で "index" と "score" をつけてください。
+index は候補番号と同じ 1 始まりの整数にしてください。
 """
 
     # LLMに問い合わせ
@@ -48,14 +49,23 @@ def reranking(query: str, candidates: List[dict], llm=llm) -> List[dict]:
 
     # LLMの評価順に候補を並べ替え
     reranked = []
+    seen_indices = set()
     for item in reranked_indices:
         idx = item.get("index")
         score = item.get("score")
-        if idx is not None and 0 <= idx < len(candidates):
-            candidates[idx]["score"] = score
-            reranked.append(candidates[idx])
+        if not isinstance(idx, int):
+            continue
 
-    return reranked
+        candidate_position = idx - 1
+        if candidate_position in seen_indices:
+            continue
+        if 0 <= candidate_position < len(candidates):
+            seen_indices.add(candidate_position)
+            reranked_candidate = dict(candidates[candidate_position])
+            reranked_candidate["score"] = score
+            reranked.append(reranked_candidate)
+
+    return reranked or candidates
 
 
 if __name__ == '__main__':

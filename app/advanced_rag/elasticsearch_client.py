@@ -1,6 +1,5 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from chunk import chunking
 
 ES_COMPAT_VERSION = "8"  # Elasticsearch 8系なので8を指定
 ES_URL = "http://localhost:9200"
@@ -19,7 +18,12 @@ es = Elasticsearch(
 mapping = {
     "mappings": {
         "properties": {
-            "content": {"type": "text"},
+            "content": {
+                "type": "text",
+                "fields": {
+                    "keyword": {"type": "keyword"}
+                }
+            },
             "embedding": {
                 "type": "dense_vector",
                 "dims": 384,
@@ -52,12 +56,10 @@ def get_documents(index_name: str, size: int = 10):
 def get_document_count(index_name):
     try:
         count_result = es.count(index=index_name)
-        # print(count_result)
-        # print('---------------')
-        doc_count = count_result["count"]
-        # print(f"インデックス '{index_name}' のドキュメント数: {doc_count}")
+        return count_result["count"]
     except Exception as e:
         print(f"ドキュメント数取得時にエラー: {e}")
+        return 0
 
 def index_exists(index_name: str) -> bool:
     try:

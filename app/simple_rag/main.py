@@ -1,13 +1,13 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
-from schemas import IndexRequest, QueryRequest, QueryResponse
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+
+from schemas import QueryRequest, QueryResponse
 from embedding import embed_texts
-from elasticsearch_client import create_index, add_document, index_exists, search_similar, es
+from elasticsearch_client import add_document, create_index, es, search_similar
 from llm_client import ask_llm
 from chunk import chunking
-from fastapi import FastAPI, UploadFile, File, Form
-from typing import List
-from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -30,12 +30,24 @@ async def index_docs(
     index_name: str = Form(...),  # フォームから取得
     documents: List[UploadFile] = File(...)  # ファイルを複数受け取る
 ):
+    create_index(index_name)
     all_chunks = []
+
     for uploaded_file in documents:
-        content_bytes = await uploaded_file.read()
-        text = content_bytes.decode("utf-8")
+        try:
+            content_bytes = await uploaded_file.read()
+            text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"UTF-8で読めないファイルがあります: {uploaded_file.filename or 'unknown'}",
+            ) from exc
+
         chunks = chunking(text, chunk_size=50, overlap=10)
         all_chunks.extend(chunks)
+
+    if not all_chunks:
+        raise HTTPException(status_code=400, detail="登録対象のテキストが空です")
 
     embeddings = embed_texts(all_chunks)
     for i, (chunk, emb) in enumerate(zip(all_chunks, embeddings)):

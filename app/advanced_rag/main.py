@@ -1,16 +1,16 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query, FastAPI, UploadFile, File, Form
-from schemas import IndexRequest, QueryRequest, QueryResponse
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+
+from schemas import QueryRequest, QueryResponse
 from embedding import embed_texts
-from elasticsearch_client import create_index, add_document, index_exists, search_similar, es
+from elasticsearch_client import add_document, create_index, es, search_similar
 from llm_client import ask_llm
 from chunk import chunking
-from typing import List
-from fastapi.middleware.cors import CORSMiddleware
 
 from reranking import reranking
 from query_rewriter import rewrite_query
-from response_evaluation import evaluate_answer
 
 
 @asynccontextmanager
@@ -32,12 +32,24 @@ async def index_docs(
     index_name: str = Form(...),  # フォームから取得
     documents: List[UploadFile] = File(...)  # ファイルを複数受け取る
 ):
+    create_index(index_name)
     all_chunks = []
+
     for uploaded_file in documents:
-        content_bytes = await uploaded_file.read()
-        text = content_bytes.decode("utf-8")
+        try:
+            content_bytes = await uploaded_file.read()
+            text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"UTF-8で読めないファイルがあります: {uploaded_file.filename or 'unknown'}",
+            ) from exc
+
         chunks = chunking(text, chunk_size=50, overlap=10)
         all_chunks.extend(chunks)
+
+    if not all_chunks:
+        raise HTTPException(status_code=400, detail="登録対象のテキストが空です")
 
     embeddings = embed_texts(all_chunks)
     for i, (chunk, emb) in enumerate(zip(all_chunks, embeddings)):
@@ -49,12 +61,12 @@ async def index_docs(
 def query_answer(req: QueryRequest):
     q_emb = embed_texts([req.question])[0]  # 入力テキストをベクトル化
     docs = search_similar(q_emb, req.top_k, req.index_name)  # 類似度を計算して取得
-    rerank_result = reranking(req.question, docs) # 計算結果を再評価
-    context = "\n".join([d["content"] for d in rerank_result])  # マージ
-    rewrited_query = rewrite_query(req.question)  # クエリを書き換え
-    prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {rewrited_query}"  # マージ
+    reranked_docs = reranking(req.question, docs) or docs
+    context = "\n".join([d["content"] for d in reranked_docs])  # マージ
+    rewritten_query = rewrite_query(req.question)  # クエリを書き換え
+    prompt = f"以下の情報を参考に質問に答えてください:\n{context}\n質問: {rewritten_query}"  # マージ
     answer = ask_llm(prompt)  # 回答生成
-    return QueryResponse(answer=answer, docs=docs) # return
+    return QueryResponse(answer=answer, docs=reranked_docs) # return
 
 
 @app.get("/get_index")
